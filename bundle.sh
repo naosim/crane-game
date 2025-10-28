@@ -1,1 +1,1 @@
-deno bundle -o sketch.js src/index.mjs
+deno bundle -o sketch.js --platform browser src/index.mjs
