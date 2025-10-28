@@ -1,0 +1,1 @@
+deno bundle -o sketch.js src/index.mjs
