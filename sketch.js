@@ -1,3 +1,201 @@
+// src/state.mjs
+var AbstructState = class {
+  crane;
+  stage;
+  controlButtons;
+  name = "";
+  /**
+   * 
+   * @param {{crane, stage, controlButtons, config, sounds}} args 
+   */
+  constructor(args) {
+    this.args = args;
+    this.crane = args.crane;
+    this.stage = args.stage;
+    this.controlButtons = args.controlButtons;
+    this.config = args.config;
+  }
+  setControlButtons(v) {
+    this.args.controlButtons = v;
+    this.controlButtons = v;
+  }
+  get controlButtons() {
+    return this.args.controlButtons;
+  }
+  init() {
+    return this;
+  }
+  draw() {
+    return this;
+  }
+  buttonReleased() {
+    return this;
+  }
+};
+var ControlState = class extends AbstructState {
+  name = "control";
+  constructor(args) {
+    super(args);
+  }
+  draw() {
+    const sounds2 = this.args.sounds;
+    if (keyIsDown(RIGHT_ARROW) || this.controlButtons.rightPressed) {
+      this.crane.x += this.config.charaSpeed * 2;
+      if (!sounds2.sound.isPlaying() || sounds2.sound.currentTime() > 0.3) {
+        sounds2.sound.stop();
+        sounds2.sound.play();
+      }
+    } else if (keyIsDown(LEFT_ARROW) || this.controlButtons.leftPressed) {
+      this.crane.x -= this.config.charaSpeed * 2;
+      if (!sounds2.sound.isPlaying() || sounds2.sound.currentTime() > 0.3) {
+        sounds2.sound.stop();
+        sounds2.sound.play();
+      }
+    }
+    return this;
+  }
+  buttonReleased() {
+    return new DownState(this.args).init();
+  }
+};
+var DownState = class extends AbstructState {
+  name = "down";
+  /**
+   * 
+   * @param {{crane, stage, controlButtons, config}} args 
+   */
+  constructor(args) {
+    super(args);
+  }
+  init() {
+    this.crane.open();
+    return this;
+  }
+  draw() {
+    const sounds2 = this.args.sounds;
+    this.crane.y += this.config.charaSpeed;
+    if (!sounds2.downSound.isPlaying() || sounds2.downSound.currentTime() > 0.3) {
+      sounds2.downSound.stop();
+      sounds2.downSound.play();
+    }
+    if (this.crane.y > this.stage.y - 90) {
+      return new GrabState(this.args).init();
+    }
+    return this;
+  }
+  buttonReleased() {
+    return new GrabState(this.args).init();
+  }
+};
+var GrabState = class extends AbstructState {
+  name = "grab";
+  count = 0;
+  /**
+   * 
+   * @param {{crane, stage, controlButtons, config}} args 
+   */
+  constructor(args) {
+    super(args);
+  }
+  init() {
+    this.crane.close();
+    this.args.sounds.grabSound.play();
+    return this;
+  }
+  draw() {
+    this.count++;
+    if (this.count > 60) {
+      return new UpState(this.args).init();
+    }
+    return this;
+  }
+  buttonReleased() {
+    return this;
+  }
+};
+var UpState = class extends AbstructState {
+  name = "up";
+  /**
+   * 
+   * @param {{crane, stage, controlButtons, config}} args 
+   */
+  constructor(args) {
+    super(args);
+  }
+  init() {
+    return this;
+  }
+  draw() {
+    const sounds2 = this.args.sounds;
+    this.crane.y -= this.config.charaSpeed / 2;
+    if (!sounds2.upSound.isPlaying() || sounds2.upSound.currentTime() > 0.3) {
+      sounds2.upSound.stop();
+      sounds2.upSound.play();
+    }
+    if (this.crane.y < this.config.armInitY) {
+      return new LeftState(this.args).init();
+    }
+    return this;
+  }
+  buttonReleased() {
+    return this;
+  }
+};
+var LeftState = class extends AbstructState {
+  name = "left";
+  /**
+   * 
+   * @param {{crane, stage, controlButtons, config}} args 
+   */
+  constructor(args) {
+    super(args);
+  }
+  init() {
+    this.crane.weaklyClose();
+    return this;
+  }
+  draw() {
+    const sounds2 = this.args.sounds;
+    this.crane.x -= this.config.charaSpeed;
+    if (!sounds2.sound.isPlaying() || sounds2.sound.currentTime() > 0.3) {
+      sounds2.sound.stop();
+      sounds2.sound.play();
+    }
+    if (this.crane.x < this.config.armInitX) {
+      return new ReleaseState(this.args).init();
+    }
+    return this;
+  }
+  buttonReleased() {
+    return this;
+  }
+};
+var ReleaseState = class extends AbstructState {
+  name = "release";
+  count = 0;
+  /**
+   * 
+   * @param {{crane, stage, controlButtons, config}} args 
+   */
+  constructor(args) {
+    super(args);
+  }
+  init() {
+    this.crane.open();
+    return this;
+  }
+  draw() {
+    this.count++;
+    if (this.count > 60) {
+      return new ControlState(this.args).init();
+    }
+    return this;
+  }
+  buttonReleased() {
+    return this;
+  }
+};
+
 // src/index.mjs
 var level = 4;
 var maxPower = 1e3 / Math.pow(1.6, level);
@@ -10,9 +208,20 @@ var armMass = 4;
 var charaSpeed = 1;
 var weaklyCloseLengthMin = 28;
 var weaklyCloseLengthMax = 35;
+var config = {
+  level,
+  maxPower,
+  trqSpeed,
+  prizeMass,
+  armInitY,
+  armInitX,
+  armMass,
+  charaSpeed,
+  weaklyCloseLengthMin,
+  weaklyCloseLengthMax
+};
 var crane;
 var context;
-var controlButtons;
 function p(cb, v) {
   return [v].map(cb)[0];
 }
@@ -310,9 +519,9 @@ window.setup = function() {
   var stage = initStage();
   crane.setup();
   resetPrize();
-  var state = new ControlState(crane, stage).init();
+  var state = new ControlState({ crane, stage, controlButtons: null, config, sounds }).init();
   context = { state };
-  controlButtons = new ControlButtons(context).init();
+  state.setControlButtons(new ControlButtons(context).init());
   setupInputConfig();
 };
 function setupInputConfig() {
@@ -335,165 +544,6 @@ function setupInputConfig() {
 window.draw = function() {
   background(220);
   context.state = context.state.draw();
-};
-var ControlState = class {
-  crane;
-  name = "control";
-  constructor(crane2, stage) {
-    this.crane = crane2;
-    this.stage = stage;
-  }
-  init() {
-    return this;
-  }
-  draw() {
-    if (keyIsDown(RIGHT_ARROW) || controlButtons.rightPressed) {
-      this.crane.x += charaSpeed * 2;
-      if (!sounds.sound.isPlaying() || sounds.sound.currentTime() > 0.3) {
-        sounds.sound.stop();
-        sounds.sound.play();
-      }
-    } else if (keyIsDown(LEFT_ARROW) || controlButtons.leftPressed) {
-      this.crane.x -= charaSpeed * 2;
-      if (!sounds.sound.isPlaying() || sounds.sound.currentTime() > 0.3) {
-        sounds.sound.stop();
-        sounds.sound.play();
-      }
-    }
-    return this;
-  }
-  buttonReleased() {
-    return new DownState(this.crane, this.stage).init();
-  }
-};
-var DownState = class {
-  crane;
-  stage;
-  name = "down";
-  constructor(crane2, stage) {
-    this.crane = crane2;
-    this.stage = stage;
-  }
-  init() {
-    this.crane.open();
-    return this;
-  }
-  draw() {
-    this.crane.y += charaSpeed;
-    if (!sounds.downSound.isPlaying() || sounds.downSound.currentTime() > 0.3) {
-      sounds.downSound.stop();
-      sounds.downSound.play();
-    }
-    if (this.crane.y > this.stage.y - 90) {
-      return new GrabState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return new GrabState(this.crane, this.stage).init();
-  }
-};
-var GrabState = class {
-  crane;
-  stage;
-  name = "grab";
-  count = 0;
-  constructor(crane2, stage) {
-    this.crane = crane2;
-    this.stage = stage;
-  }
-  init() {
-    this.crane.close();
-    sounds.grabSound.play();
-    return this;
-  }
-  draw() {
-    this.count++;
-    if (this.count > 60) {
-      return new UpState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-};
-var UpState = class {
-  crane;
-  stage;
-  name = "up";
-  constructor(crane2, stage) {
-    this.crane = crane2;
-    this.stage = stage;
-  }
-  init() {
-    return this;
-  }
-  draw() {
-    this.crane.y -= charaSpeed / 2;
-    if (!sounds.upSound.isPlaying() || sounds.upSound.currentTime() > 0.3) {
-      sounds.upSound.stop();
-      sounds.upSound.play();
-    }
-    if (this.crane.y < armInitY) {
-      return new LeftState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-};
-var LeftState = class {
-  crane;
-  stage;
-  name = "left";
-  constructor(crane2, stage) {
-    this.crane = crane2;
-    this.stage = stage;
-  }
-  init() {
-    crane.weaklyClose();
-    return this;
-  }
-  draw() {
-    this.crane.x -= charaSpeed;
-    if (!sounds.sound.isPlaying() || sounds.sound.currentTime() > 0.3) {
-      sounds.sound.stop();
-      sounds.sound.play();
-    }
-    if (this.crane.x < armInitX) {
-      return new ReleaseState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-};
-var ReleaseState = class {
-  crane;
-  stage;
-  name = "release";
-  count = 0;
-  constructor(crane2, stage) {
-    this.crane = crane2;
-    this.stage = stage;
-  }
-  init() {
-    this.crane.open();
-    return this;
-  }
-  draw() {
-    this.count++;
-    if (this.count > 60) {
-      return new ControlState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
 };
 var DogPrize = class Prize {
   group;

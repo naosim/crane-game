@@ -1,3 +1,5 @@
+import {ControlState} from './state.mjs';
+
 const level = 4;
 const maxPower = 1000 / Math.pow(1.6, level);
 console.log(maxPower);
@@ -10,10 +12,19 @@ const armMass = 4;
 const charaSpeed = 1;
 const weaklyCloseLengthMin = 28; // もっともつよい
 const weaklyCloseLengthMax = 35; // 最もゆるい
+
+const config = {
+  level, maxPower, trqSpeed,
+  prizeMass,
+  armInitY, armInitX, armMass,
+  charaSpeed,
+  weaklyCloseLengthMin, weaklyCloseLengthMax,
+}
+
+
 var crane;
 var context;
-var state;
-var controlButtons;
+
 function p(cb, v) {
   return [v].map(cb)[0]
 }
@@ -327,9 +338,9 @@ window.setup = function() {
   var stage = initStage()
   crane.setup();
   resetPrize();
-  var state = new ControlState(crane, stage).init();
+  var state = new ControlState({crane, stage, controlButtons:null/* lateinit */, config, sounds}).init();
   context = {state};
-  controlButtons = new ControlButtons(context).init();
+  state.setControlButtons(new ControlButtons(context).init());
 
   setupInputConfig();
   
@@ -372,228 +383,6 @@ function keyReleased() {
   context.state = context.state.buttonReleased();
 }
 
-// クレーンの状態パターン
-const AbstructState = class {
-  crane;
-  stage;
-  name = 'down';
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    return this;
-  }
-  draw() {
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-}
-
-/**
- * コントロール状態
- * 左右で操作可能。ボタン押下で下降状態へ遷移
- * @param {*} crane 
- * @param {*} stage 
- */
-const ControlState = class {
-  crane;
-  name = 'control';
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    return this;
-  }
-  draw() {
-    if (keyIsDown(RIGHT_ARROW) || controlButtons.rightPressed) {
-      this.crane.x += charaSpeed * 2;
-      if(!sounds.sound.isPlaying() || sounds.sound.currentTime() > 0.3) {
-        sounds.sound.stop();
-        sounds.sound.play();
-      }
-    } else if (keyIsDown(LEFT_ARROW) || controlButtons.leftPressed) {
-      this.crane.x -= charaSpeed * 2;
-      if(!sounds.sound.isPlaying() || sounds.sound.currentTime() > 0.3) {
-        sounds.sound.stop();
-        sounds.sound.play();
-      }
-    }
-    return this
-  }
-  buttonReleased() {
-    return new DownState(this.crane, this.stage).init();
-  }
-}
-
-/**
- * 下降状態
- * 下まで移動するか、ボタン押下で、つかむ状態へ遷移
- * @param {Crane} crane 
- * @param {*} stage 
- */
-const DownState = class {
-  crane;
-  stage;
-  name = 'down';
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    this.crane.open();
-    return this;
-  }
-  draw() {
-    this.crane.y += charaSpeed;
-    if(!sounds.downSound.isPlaying() || sounds.downSound.currentTime() > 0.3) {
-      sounds.downSound.stop();
-      sounds.downSound.play();
-    }
-    if(this.crane.y > this.stage.y - 90 ) {
-      return new GrabState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return new GrabState(this.crane, this.stage).init();
-  }
-}
-
-/**
- * つかむ状態
- * つかんだら上昇状態へ遷移
- * @param {Crane} crane 
- * @param {*} stage 
- */
-const GrabState = class {
-  crane;
-  stage;
-  name = 'grab';
-
-  count = 0;
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    this.crane.close();
-    sounds.grabSound.play();
-    return this;
-  }
-  draw() {
-    this.count++;
-    if(this.count > 60) {
-      return new UpState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-}
-
-/**
- * 上昇状態
- * あがったら左移動状態へ遷移
- * @param {Crane} crane 
- * @param {*} stage 
- */
-const UpState = class {
-  crane;
-  stage;
-  name = 'up';
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    return this;
-  }
-  draw() {
-    this.crane.y -= charaSpeed / 2;
-    if(!sounds.upSound.isPlaying() || sounds.upSound.currentTime() > 0.3) {
-      sounds.upSound.stop();
-      sounds.upSound.play();
-    }
-    if(this.crane.y < armInitY) {
-      return new LeftState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-}
-
-/**
- * 左移動状態
- * 左へ移動したら放す状態へ遷移
- * @param {Crane} crane 
- * @param {*} stage 
- */
-const LeftState = class {
-  crane;
-  stage;
-  name = 'left';
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    crane.weaklyClose();
-    return this;
-  }
-  draw() {
-    this.crane.x -= charaSpeed;
-    if(!sounds.sound.isPlaying() || sounds.sound.currentTime() > 0.3) {
-      sounds.sound.stop();
-      sounds.sound.play();
-    }
-    if(this.crane.x < armInitX) {
-      return new ReleaseState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-}
-
-/**
- * 放す状態
- * 放したらコントロール状態へ遷移
- * @param {Crane} crane 
- * @param {*} stage 
- */
-const ReleaseState = class {
-  crane;
-  stage;
-  name = 'release';
-
-  count = 0;
-  constructor(crane, stage) {
-    this.crane = crane;
-    this.stage = stage;
-  }
-  init() {
-    this.crane.open();
-    return this;
-  }
-  draw() {
-    this.count++;
-    if(this.count > 60) {
-      return new ControlState(this.crane, this.stage).init();
-    }
-    return this;
-  }
-  buttonReleased() {
-    return this;
-  }
-}
 
 const Prize = class {
   init() {
